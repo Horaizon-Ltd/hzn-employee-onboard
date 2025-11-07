@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Danlon Document Processor</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .upload-area {
+            border: 2px dashed #ccc;
+            border-radius: 10px;
+            padding: 40px;
+            text-align: center;
+            margin: 20px 0;
+            transition: all 0.3s ease;
+        }
+        .upload-area:hover {
+            border-color: #007bff;
+            background-color: #f8f9fa;
+        }
+        .upload-area.dragover {
+            border-color: #007bff;
+            background-color: #e3f2fd;
+        }
+        #fileInput {
+            display: none;
+        }
+        .upload-btn {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .upload-btn:hover {
+            background-color: #0056b3;
+        }
+        .process-btn {
+            background-color: #28a745;
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            width: 100%;
+            margin: 20px 0;
+        }
+        .process-btn:hover {
+            background-color: #218838;
+        }
+        .process-btn:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        .result {
+            margin-top: 30px;
+            padding: 20px;
+            border-radius: 5px;
+        }
+        .result.success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .result.error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .loading {
+            text-align: center;
+            padding: 20px;
+        }
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #007bff;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .file-info {
+            background-color: #e9ecef;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .file-item {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 10px 0;
+            position: relative;
+        }
+        .file-type-select {
+            width: 200px;
+            padding: 5px;
+            margin: 5px 0;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+        }
+        .remove-file {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 25px;
+            height: 25px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .remove-file:hover {
+            background-color: #c82333;
+        }
+        .download-btn {
+            background-color: #17a2b8;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            margin: 10px 0;
+        }
+        .lambda-url-config {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔄 Danlon Document Processor</h1>
+        
+        <div class="lambda-url-config">
+            <h3>⚙️ Configuration</h3>
+            <label for="lambdaUrl">Lambda Function URL:</label><br>
+            <input type="url" id="lambdaUrl" placeholder="https://your-lambda-url.lambda-url.region.on.aws/" 
+                   style="width: 100%; padding: 8px; margin: 5px 0; border: 1px solid #ddd; border-radius: 4px;">
+            <small>Enter your AWS Lambda Function URL here</small>
+        </div>
+
+        <div class="upload-area" id="uploadArea">
+            <p>📁 Drag & drop your documents here or click to select multiple files</p>
+            <button class="upload-btn" onclick="document.getElementById('fileInput').click()">
+                Choose Files
+            </button>
+            <input type="file" id="fileInput" accept=".pdf,.xlsx,.xls,.csv" multiple onchange="handleFileSelect(event)">
+        </div>
+
+        <div id="fileList" style="display: none;">
+            <h3>📋 Selected Files:</h3>
+            <div id="fileItems"></div>
+            <button class="upload-btn" onclick="document.getElementById('fileInput').click()" style="margin: 10px 0;">
+                Add More Files
+            </button>
+        </div>
+
+        <button class="process-btn" id="processBtn" onclick="processDocuments()" disabled>
+            Process All Documents
+        </button>
+
+        <div id="result"></div>
+    </div>
+
+    <script>
+        let selectedFiles = [];
+
+        // File type options
+        const fileTypeOptions = [
+            { value: 'payslip', label: '💰 Payslip (Lønseddel)' },
+            { value: 'employee', label: '👥 Employee Data' },
+            { value: 'employee_list', label: '📋 Employee List' },
+            { value: 'company_master', label: '🏢 Company Master Record' },
+            { value: 'accounting_groups', label: '📊 Accounting Groups' },
+            { value: 'holiday', label: '🏖️ Holiday Schedule' },
+            { value: 'active_employee', label: '✅ Active Employee Data' }
+        ];
+
+        // Drag and drop functionality
+        const uploadArea = document.getElementById('uploadArea');
+        
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+        
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+        
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const files = Array.from(e.dataTransfer.files);
+            handleFiles(files);
+        });
+
+        uploadArea.addEventListener('click', () => {
+            document.getElementById('fileInput').click();
+        });
+
+        function handleFileSelect(event) {
+            const files = Array.from(event.target.files);
+            handleFiles(files);
+        }
+
+        function handleFiles(files) {
+            files.forEach(file => {
+                // Auto-detect file type based on name
+                const detectedType = detectFileType(file.name);
+                
+                const fileObj = {
+                    id: Date.now() + Math.random(),
+                    file: file,
+                    type: detectedType,
+                    name: file.name,
+                    size: file.size
+                };
+                
+                selectedFiles.push(fileObj);
+            });
+            
+            updateFileList();
+            updateProcessButton();
+        }
+
+        function detectFileType(fileName) {
+            const name = fileName.toLowerCase();
+            
+            if (name.includes('payslip') || name.includes('lønseddel')) return 'payslip';
+            if (name.includes('employee_list') || name.includes('medarbejderliste')) return 'employee_list';
+            if (name.includes('employee') || name.includes('medarbejder')) return 'employee';
+            if (name.includes('company') || name.includes('virksomhed')) return 'company_master';
+            if (name.includes('accounting') || name.includes('regnskab')) return 'accounting_groups';
+            if (name.includes('holiday') || name.includes('ferie')) return 'holiday';
+            if (name.includes('active')) return 'active_employee';
+            
+            return 'payslip'; // Default
+        }
+
+        function updateFileList() {
+            const fileList = document.getElementById('fileList');
+            const fileItems = document.getElementById('fileItems');
+            
+            if (selectedFiles.length === 0) {
+                fileList.style.display = 'none';
+                return;
+            }
+            
+            fileList.style.display = 'block';
+            
+            fileItems.innerHTML = selectedFiles.map(fileObj => `
+                <div class="file-item">
+                    <button class="remove-file" onclick="removeFile('${fileObj.id}')">×</button>
+                    <div><strong>📄 ${fileObj.name}</strong></div>
+                    <div><small>${(fileObj.size / 1024 / 1024).toFixed(2)} MB</small></div>
+                    <div style="margin: 10px 0;">
+                        <label>File Type:</label>
+                        <select class="file-type-select" onchange="updateFileType('${fileObj.id}', this.value)">
+                            ${fileTypeOptions.map(option => 
+                                `<option value="${option.value}" ${option.value === fileObj.type ? 'selected' : ''}>${option.label}</option>`
+                            ).join('')}
+                        </select>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function removeFile(fileId) {
+            selectedFiles = selectedFiles.filter(f => f.id != fileId);
+            updateFileList();
+            updateProcessButton();
+        }
+
+        function updateFileType(fileId, newType) {
+            const fileObj = selectedFiles.find(f => f.id == fileId);
+            if (fileObj) {
+                fileObj.type = newType;
+            }
+        }
+
+        function updateProcessButton() {
+            document.getElementById('processBtn').disabled = selectedFiles.length === 0;
+        }
+
+        async function processDocuments() {
+            const lambdaUrl = document.getElementById('lambdaUrl').value.trim();
+            
+            if (!lambdaUrl) {
+                showResult('Please enter your Lambda Function URL', 'error');
+                return;
+            }
+            
+            if (selectedFiles.length === 0) {
+                showResult('Please select at least one file', 'error');
+                return;
+            }
+
+            // Show loading
+            document.getElementById('result').innerHTML = `
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>Processing ${selectedFiles.length} documents...</p>
+                    <p><small>This may take a few moments</small></p>
+                </div>
+            `;
+
+            try {
+                // Convert all files to base64
+                const filesData = await Promise.all(
+                    selectedFiles.map(async (fileObj) => {
+                        const base64Content = await fileToBase64(fileObj.file);
+                        return {
+                            file_type: fileObj.type,
+                            file_name: fileObj.name,
+                            file_format: fileObj.name.split('.').pop().toLowerCase(),
+                            file_data: base64Content
+                        };
+                    })
+                );
+                
+                // Prepare request with multiple files
+                const requestBody = {
+                    files: filesData
+                };
+
+                // Send to Lambda
+                const response = await fetch(lambdaUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    const summaryText = Object.entries(result.processing_summary)
+                        .map(([type, count]) => `${type}: ${count} records`)
+                        .join('<br>');
+                    
+                    showResult(`
+                        <h3>✅ Processing Complete!</h3>
+                        <p><strong>Files processed:</strong> ${result.files_processed}</p>
+                        <p><strong>Total records:</strong> ${result.records_processed}</p>
+                        <p><strong>Processing Summary:</strong><br>${summaryText}</p>
+                        <button class="download-btn" onclick="downloadCSV('${result.csv_content}', '${result.file_name}')">
+                            📥 Download Merged CSV
+                        </button>
+                    `, 'success');
+                } else {
+                    showResult(`❌ Error: ${result.error}`, 'error');
+                }
+
+            } catch (error) {
+                showResult(`❌ Connection Error: ${error.message}`, 'error');
+            }
+        }
+
+        function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = () => {
+                    // Remove data:type;base64, prefix
+                    const base64 = reader.result.split(',')[1];
+                    resolve(base64);
+                };
+                reader.onerror = error => reject(error);
+            });
+        }
+
+        function showResult(message, type) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = `<div class="result ${type}">${message}</div>`;
+        }
+
+        function downloadCSV(base64Content, fileName) {
+            try {
+                // Decode base64
+                const csvContent = atob(base64Content);
+                
+                // Create blob and download
+                const blob = new Blob([csvContent], { type: 'text/csv' });
+                const url = window.URL.createObjectURL(blob);
+                
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = fileName;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+                
+                showResult('✅ CSV downloaded successfully!', 'success');
+            } catch (error) {
+                showResult(`❌ Download failed: ${error.message}`, 'error');
+            }
+        }
+
+        // Load saved Lambda URL
+        window.onload = function() {
+            const savedUrl = localStorage.getItem('lambdaUrl');
+            if (savedUrl) {
+                document.getElementById('lambdaUrl').value = savedUrl;
+            }
+        };
+
+        // Save Lambda URL
+        document.getElementById('lambdaUrl').addEventListener('change', function() {
+            localStorage.setItem('lambdaUrl', this.value);
+        });
+    </script>
+</body>
+</html>

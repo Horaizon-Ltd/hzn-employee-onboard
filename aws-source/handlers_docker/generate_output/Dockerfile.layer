@@ -1,0 +1,19 @@
+# Alternative Dockerfile using pre-compiled Tesseract layer approach
+FROM public.ecr.aws/lambda/python:3.11
+
+# Install only poppler-utils (for pdf2image)
+RUN yum update -y && \
+    yum install -y poppler-utils && \
+    yum clean all
+
+# Copy requirements file
+COPY requirements.txt ${LAMBDA_TASK_ROOT}/
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r ${LAMBDA_TASK_ROOT}/requirements.txt
+
+# Copy function code and mapping file
+COPY src/ ${LAMBDA_TASK_ROOT}/
+
+# Set the CMD to your handler
+CMD [ "main.lambda_handler" ]
