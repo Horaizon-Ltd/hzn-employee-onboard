@@ -467,6 +467,7 @@ def process_payslip(file_path: Path, file_format: str):
 
     print("OCR complete")
     df = pd.DataFrame.from_records(res)
+    df = df.rename(columns={"Medarbejdernummer": "Medarb.nr."})
 
     return df
 
@@ -877,6 +878,19 @@ def apply_danlon_mapping(merged_data):
 
     return final_output_df
 
+def merge(left: pd.DataFrame, right: pd.DataFrame, on: str, how="left"):
+    merged = pd.merge(left, right, on=on, how=how, suffixes=("_left", "_right"))
+    overlap_cols = set(left.columns).intersection(right.columns) - {on}
+
+    for col in overlap_cols:
+        left_col = f"{col}_left"
+        right_col = f"{col}_right"
+
+        merged[col] = merged[left_col].combine_first(merged[right_col])
+        merged.drop(columns=[left_col, right_col], inplace=True)
+
+    return merged
+
 def merge_and_map_data(processed_data):
     """
     Merge processed data based on your original logic and apply mapping
@@ -903,7 +917,7 @@ def merge_and_map_data(processed_data):
         logging.info("merging employee holiday")
         holiday_df = processed_data["employee_holiday"]
         if "Navn" in merged.columns and "Navn" in holiday_df.columns:
-            merged = pd.merge(merged, holiday_df, on="Navn", how="left", suffixes=('_df1', '_df2'))
+            merged = merge(merged, holiday_df, on="Navn")
     
     # Merge with employee list if available
     if "employee_list" in processed_data and not merged.empty:
@@ -913,7 +927,7 @@ def merge_and_map_data(processed_data):
             # Ensure consistent data types
             merged["Medarb.nr."] = merged["Medarb.nr."].astype(str)
             employee_list_df["Medarb.nr."] = employee_list_df["Medarb.nr."].astype(str)
-            merged = pd.merge(merged, employee_list_df, on="Medarb.nr.", how="left", suffixes=('_df1', '_df2'))
+            merged = merge(merged, employee_list_df, on="Medarb.nr.")
     
     # Merge with employee data if available
     if "employee_general" in processed_data and not merged.empty and key != "employee_general":
@@ -922,7 +936,7 @@ def merge_and_map_data(processed_data):
         if "Medarb.nr." in merged.columns and "Medarb.nr." in employee_df.columns:
             merged["Medarb.nr."] = merged["Medarb.nr."].astype(str)
             employee_df["Medarb.nr."] = employee_df["Medarb.nr."].astype(str)
-            merged = pd.merge(merged, employee_df, on="Medarb.nr.", how="left", suffixes=('_df1', '_df2'))
+            merged = merge(merged, employee_df, on="Medarb.nr.")
     
     if "employee_payslip" in processed_data and not merged.empty and key != "employee_payslip":
         logging.info("merging employee_payslip")
@@ -931,6 +945,7 @@ def merge_and_map_data(processed_data):
             merged["Medarb.nr."] = merged["Medarb.nr."].astype(str)
             payslip_df["Medarb.nr."] = payslip_df["Medarb.nr."].astype(str)
             merged = pd.merge(merged, payslip_df, on="Medarb.nr.", how="left", suffixes=('_df1', '_df2'))
+            merged = merge(merged, payslip_df, on="Medarb.nr.")
     
     # If merged is still empty, just return the largest available dataset
     if merged.empty:
