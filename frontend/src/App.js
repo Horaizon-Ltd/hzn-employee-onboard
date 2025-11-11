@@ -131,29 +131,29 @@ function App() {
       const result = await response.json();
 
       if (result.success) {
-        // Download the CSV with proper UTF-8 encoding
-        // Decode base64 to binary string
-        const binaryString = atob(result.csv_content);
+        // Download the CSV from S3 presigned URL
+        if (result.download_url) {
+          // Fetch the file from S3 and trigger download
+          const fileResponse = await fetch(result.download_url);
+          const blob = await fileResponse.blob();
 
-        // Convert binary string to UTF-8 byte array
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
+          // Create blob URL and trigger download
+          const blobUrl = window.URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = blobUrl;
+          link.download = result.file_name || 'danlon_processed_output.csv';
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+
+          // Clean up blob URL
+          window.URL.revokeObjectURL(blobUrl);
+
+          setSuccess(true);
+          setSelectedFiles({});
+        } else {
+          throw new Error('No download URL received from server');
         }
-
-        // Create blob with UTF-8 encoding
-        const blob = new Blob([bytes], { type: 'text/csv;charset=utf-8' });
-        const url = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = result.file_name || 'danlon_processed_output.csv';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        window.URL.revokeObjectURL(url);
-
-        setSuccess(true);
-        setSelectedFiles({});
       } else {
         throw new Error(result.error || 'Processing failed');
       }
@@ -243,7 +243,8 @@ function App() {
               {processing && (
                 <div className="processing-info">
                   <div className="spinner"></div>
-                  <p>Processing your documents... This may take a minute.</p>
+                  <p>Processing your documents... This may take 5-10 minutes for OCR processing.</p>
+                  <p className="processing-note">Please wait - your CSV will download automatically when ready.</p>
                 </div>
               )}
             </div>

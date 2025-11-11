@@ -6,6 +6,43 @@ module "ecr_repo" {
   name = "${var.project_name}-generate-output"
 }
 
+module "results_bucket" {
+  source      = "./modules/aws-s3"
+  project     = var.project_name
+  environment = var.environment
+  name        = "${var.project_name}-results-${var.environment}"
+  acl         = "private"
+}
+
+resource "aws_iam_policy" "lambda_s3_policy" {
+  name        = "${var.project_name}-lambda-s3-access-${var.environment}"
+  description = "Allow Lambda to write CSV results to S3"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:PutObject",
+          "s3:PutObjectAcl",
+          "s3:GetObject"
+        ]
+        Resource = "${module.results_bucket.bucket_arn}/*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "kms:Decrypt",
+          "kms:GenerateDataKey",
+          "kms:DescribeKey"
+        ]
+        Resource = module.results_bucket.kms_key_arn
+      }
+    ]
+  })
+}
+
 module "docker_lambda" {
   source = "./modules/aws-lambda-docker"
 
@@ -19,11 +56,12 @@ module "docker_lambda" {
   source_code_path = "../aws-source/handlers_docker/generate_output"
 
   environment_variables = {
-    ENVIRONMENT = var.environment
-    LOG_LEVEL   = "INFO"
+    ENVIRONMENT      = var.environment
+    LOG_LEVEL        = "INFO"
+    RESULTS_BUCKET   = module.results_bucket.bucket
   }
 
-  additional_policies = []
+  additional_policies = [aws_iam_policy.lambda_s3_policy.arn]
 
   layers = []
 }

@@ -7,6 +7,12 @@ import tempfile
 import traceback
 import re
 import logging
+import gc
+import boto3
+
+from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from botocore.config import Config
 
 from pdf2image import convert_from_path
 from pathlib import Path
@@ -17,6 +23,26 @@ from openpyxl import load_workbook
 # Configure logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
+
+def process_single_file(file_path, file_type, file_format, file_name):
+    """
+    Helper function to process a single file (for parallel processing)
+    Returns tuple: (file_type, result_df, error)
+    """
+    try:
+        logger.info(f"Processing {file_type} ({file_format}): {file_name}")
+        result_df = process_file_by_type(file_path, file_type, file_format)
+        logger.info(f"Completed {file_type}: {len(result_df)} records, {len(result_df.columns)} columns")
+
+        # Force garbage collection after processing each file to free memory
+        gc.collect()
+
+        return (file_type, result_df, None)
+    except Exception as e:
+        logger.error(f"Error processing {file_type}: {e}")
+        logger.error(traceback.format_exc())
+        gc.collect()
+        return (file_type, pd.DataFrame({'error': [str(e)]}), str(e))
 
 def lambda_handler(event, context):
     """
@@ -61,54 +87,99 @@ def lambda_handler(event, context):
         logger.info(f"Processing {len(files)} files")
         for f in files:
             logger.info(f"  - {f.get('file_type')}: {f.get('file_name')}")
-        
+
         # Create temp directory
         temp_dir = tempfile.mkdtemp()
         processed_data = {}
-        
-        # Process each file
+
+        file_tasks = []
         for file_info in files:
             file_type = file_info.get('file_type')
             file_name = file_info.get('file_name')
             file_format = file_info.get('file_format')
             file_data = file_info.get('file_data')
-            
+
             if not all([file_type, file_name, file_format, file_data]):
-                print(f"Skipping incomplete file info: {file_info}")
+                logger.warning(f"Skipping incomplete file info: {file_info}")
                 continue
-                
-            print(f"Processing {file_type}: {file_name}")
-            
+
             # Decode and save file
             decoded_data = base64.b64decode(file_data)
             input_file = os.path.join(temp_dir, file_name)
-            
+
             with open(input_file, 'wb') as f:
                 f.write(decoded_data)
-            
-            # Process based on file type and format
-            try:
-                logger.info(f"Processing {file_type} ({file_format})...")
-                result_df = process_file_by_type(input_file, file_type, file_format)
-                processed_data[file_type] = result_df
-                logger.info(f"Processed {file_type}: {len(result_df)} records, {len(result_df.columns)} columns")
-                logger.info(f"   Columns: {list(result_df.columns)[:5]}...")  # Log first 5 columns
-            except Exception as e:
-                logger.error(f"Error processing {file_type}: {e}")
-                logger.error(traceback.format_exc())
-                processed_data[file_type] = pd.DataFrame({'error': [str(e)]})
 
-            # Cleanup individual file
-            os.remove(input_file)
+            file_tasks.append((input_file, file_type, file_format, file_name))
+            logger.info(f"Prepared {file_type}: {file_name}")
+
+        logger.info(f"Starting smart parallel processing of {len(file_tasks)} files...")
+
+        # Separate low-memory (Excel) and high-memory (PDF) tasks
+        excel_tasks = [(f, t, fmt, n) for f, t, fmt, n in file_tasks if fmt == 'xlsx']
+        pdf_tasks = [(f, t, fmt, n) for f, t, fmt, n in file_tasks if fmt == 'pdf']
+
+        logger.info(f"Excel files: {len(excel_tasks)}, PDF files: {len(pdf_tasks)}")
+
+        # Process Excel files in parallel (low memory usage)
+        if excel_tasks:
+            logger.info("Processing Excel files in parallel...")
+            with ThreadPoolExecutor(max_workers=len(excel_tasks)) as executor:
+                future_to_file = {
+                    executor.submit(process_single_file, *task): task
+                    for task in excel_tasks
+                }
+
+                for future in as_completed(future_to_file):
+                    task = future_to_file[future]
+                    try:
+                        file_type, result_df, error = future.result()
+                        processed_data[file_type] = result_df
+                        if error:
+                            logger.error(f"Error in {file_type}: {error}")
+                        else:
+                            logger.info(f"✓ Completed {file_type}: {len(result_df)} records")
+                    except Exception as e:
+                        logger.error(f"Exception processing {task[3]}: {e}")
+                        logger.error(traceback.format_exc())
+
+        if pdf_tasks:
+            pdf_workers = 1
+            logger.info(f"Processing {len(pdf_tasks)} PDF files sequentially for quality...")
+            with ThreadPoolExecutor(max_workers=pdf_workers) as executor:
+                future_to_file = {
+                    executor.submit(process_single_file, *task): task
+                    for task in pdf_tasks
+                }
+
+                for future in as_completed(future_to_file):
+                    task = future_to_file[future]
+                    try:
+                        file_type, result_df, error = future.result()
+                        processed_data[file_type] = result_df
+                        if error:
+                            logger.error(f"Error in {file_type}: {error}")
+                        else:
+                            logger.info(f"✓ Completed {file_type}: {len(result_df)} records")
+                    except Exception as e:
+                        logger.error(f"Exception processing {task[3]}: {e}")
+                        logger.error(traceback.format_exc())
+
+        for input_file, _, _, _ in file_tasks:
+            try:
+                os.remove(input_file)
+            except Exception as e:
+                logger.warning(f"Could not remove {input_file}: {e}")
 
         logger.info(f"Processed data summary: {list(processed_data.keys())}")
 
-        # Merge and map data based on your original logic
         logger.info("Starting merge and mapping...")
         final_result = merge_and_map_data(processed_data)
+
         if final_result is not None and not final_result.empty:
             logger.info(f"Final result: {len(final_result)} rows, {len(final_result.columns)} columns")
         else:
+            logger.error("Merge and map returned empty result")
             return {
                 'statusCode': 400,
                 'headers': {
@@ -119,21 +190,60 @@ def lambda_handler(event, context):
                     'error': 'Missing key data for processing.'
                 })
             }
-        
-        # Generate CSV
-        csv_output = final_result.to_csv(index=False, encoding='utf-8')
-        csv_base64 = base64.b64encode(csv_output.encode('utf-8')).decode('utf-8')
-        
-        # Cleanup temp directory
-        os.rmdir(temp_dir)
 
+        # Generate CSV
+        logger.info("Generating CSV output...")
+        csv_output = final_result.to_csv(index=False, encoding='utf-8')
+        logger.info(f"CSV generated, size: {len(csv_output)} bytes")
+
+        logger.info("Uploading CSV to S3...")
+        
+        s3_client = boto3.client('s3', config=Config(signature_version='s3v4'))
+        bucket_name = os.environ.get('RESULTS_BUCKET')
+
+        if not bucket_name:
+            raise ValueError("RESULTS_BUCKET environment variable not set")
+
+        # Generate unique filename with timestamp
+        timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+        s3_key = f"results/{timestamp}_danlon_processed_output.csv"
+
+        # Upload CSV to S3
+        s3_client.put_object(
+            Bucket=bucket_name,
+            Key=s3_key,
+            Body=csv_output.encode('utf-8'),
+            ContentType='text/csv',
+            ContentDisposition='attachment; filename="danlon_processed_output.csv"'
+        )
+        logger.info(f"CSV uploaded to S3: s3://{bucket_name}/{s3_key}")
+
+        download_url = s3_client.generate_presigned_url(
+            'get_object',
+            Params={
+                'Bucket': bucket_name,
+                'Key': s3_key,
+                'ResponseContentDisposition': 'attachment; filename="danlon_processed_output.csv"',
+                'ResponseContentType': 'text/csv'
+            },
+            ExpiresIn=3600  # 1 hour
+        )
+        logger.info("Generated presigned download URL")
+
+        # Cleanup temp directory
+        try:
+            os.rmdir(temp_dir)
+            logger.info("Temp directory cleaned up")
+        except Exception as e:
+            logger.warning(f"Could not remove temp dir: {e}")
         response_body = {
             'success': True,
-            'csv_content': csv_base64,
+            'download_url': download_url,
             'file_name': "danlon_processed_output.csv",
             'records_processed': len(final_result),
             'files_processed': len(files),
-            'processing_summary': {k: len(v) for k, v in processed_data.items()}
+            'processing_summary': {k: len(v) for k, v in processed_data.items()},
+            's3_key': s3_key
         }
 
         logger.info(f"=== Processing Complete ===")
@@ -141,29 +251,38 @@ def lambda_handler(event, context):
         logger.info(f"Files processed: {len(files)}")
         logger.info(f"Summary: {response_body['processing_summary']}")
 
-        return {
+        # Create JSON response
+        logger.info("Converting response to JSON...")
+        response_json = json.dumps(response_body)
+        logger.info(f"Response size: {len(response_json)} bytes")
+
+        final_response = {
             'statusCode': 200,
             'headers': {
                 'Content-Type': 'application/json'
             },
-            'body': json.dumps(response_body)
+            'body': response_json
         }
+        return final_response
 
     except Exception as e:
         logger.error(f"=== Error Occurred ===")
+        logger.error(f"Error type: {type(e).__name__}")
         logger.error(f"Error: {str(e)}")
         logger.error(traceback.format_exc())
 
-        return {
+        error_response = {
             'statusCode': 500,
             'headers': {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
             },
             'body': json.dumps({
                 'success': False,
-                'error': str(e)
+                'error': str(e),
+                'error_type': type(e).__name__
             })
         }
+        return error_response
     
 def extract_table_from_section(
     image,
@@ -290,12 +409,19 @@ def extract_column_from_df(df: pd.DataFrame) -> Dict:
     return result
 
 def ocr_process(pdf_path: Path):
-    pages = convert_from_path(pdf_path)
+    pages = convert_from_path(pdf_path, dpi=200)
     all_text = ""
 
     for _, page in enumerate(pages):
         text = pytesseract.image_to_string(page, lang="dan", config="--psm 4")
         all_text += text + "\n\n"
+
+        # Free memory immediately after processing each page
+        del page
+
+    # Clean up pages list
+    del pages
+    gc.collect()
 
     return all_text
 
@@ -324,14 +450,14 @@ def process_payslip(file_path: Path, file_format: str):
         "middle_middle": coordinates[7]
     }
 
-    pages = convert_from_path(file_path)
+    pages = convert_from_path(file_path, dpi=200)
     res = []
 
     for page in pages:
         res_dict = {}
 
         for section_name, coordinate in coordinates_dict.items():
-            x1,y1,x2,y2 = coordinate
+            x1, y1, x2, y2 = coordinate
             cropped = page.crop((x1, y1, x2, y2))
 
             if section_name == "top_left":
@@ -343,7 +469,6 @@ def process_payslip(file_path: Path, file_format: str):
                 postcode = None
 
                 for line in lines:
-                    print(line)
                     if not name:
                         name = line
                         continue
@@ -460,10 +585,17 @@ def process_payslip(file_path: Path, file_format: str):
                     middle_middle_dict = extract_column_from_df(middle_middle_df)
                     res_dict.update(middle_middle_dict)
 
-        if res_dict and res_dict["Navn"] != "Marianne Trolle" and res_dict["Navn"] != "Lisbeth Hald Anderse":        
+        if res_dict and res_dict["Navn"] != "Marianne Trolle" and res_dict["Navn"] != "Lisbeth Hald Anderse":
             res.append(res_dict)
         else:
             print("no record found")
+
+        # Free memory after each page
+        del page
+        gc.collect()
+
+    # Clean up pages
+    del pages
 
     print("OCR complete")
     df = pd.DataFrame.from_records(res)
@@ -944,7 +1076,6 @@ def merge_and_map_data(processed_data):
         if "Medarb.nr." in merged.columns and "Medarb.nr." in payslip_df.columns:
             merged["Medarb.nr."] = merged["Medarb.nr."].astype(str)
             payslip_df["Medarb.nr."] = payslip_df["Medarb.nr."].astype(str)
-            merged = pd.merge(merged, payslip_df, on="Medarb.nr.", how="left", suffixes=('_df1', '_df2'))
             merged = merge(merged, payslip_df, on="Medarb.nr.")
     
     # If merged is still empty, just return the largest available dataset

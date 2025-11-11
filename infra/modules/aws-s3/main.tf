@@ -45,3 +45,15 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "bucket_encryption
     }
   }
 }
+
+resource "aws_s3_bucket_cors_configuration" "bucket_cors" {
+  bucket = aws_s3_bucket.bucket.id
+
+  cors_rule {
+    allowed_headers = ["*"]
+    allowed_methods = ["GET", "HEAD"]
+    allowed_origins = ["*"]
+    expose_headers  = ["ETag", "Content-Length", "Content-Type"]
+    max_age_seconds = 3000
+  }
+}
