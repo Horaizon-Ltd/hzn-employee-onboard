@@ -111,7 +111,7 @@ resource "aws_lambda_function_url" "create_s3_upload_url_url" {
 
   cors {
     allow_origins = var.cors_allow_origins
-    allow_methods = ["GET"]
+    allow_methods = ["POST", "OPTIONS"]
     allow_headers = var.cors_allow_headers
     max_age       = 86400
   }
