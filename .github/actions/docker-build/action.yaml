@@ -1,0 +1,56 @@
+name: "Build Docker Images"
+description: "Builds Docker images for Lambda functions locally"
+
+inputs:
+  handler_name:
+    description: "The Lambda handler name"
+    required: true
+
+outputs:
+  image_tag:
+    description: "Docker image tag built"
+    value: ${{ steps.build.outputs.image_tag }}
+
+runs:
+  using: "composite"
+  steps:
+
+  - name: Set up QEMU for ARM emulation
+    uses: docker/setup-qemu-action@v3
+    with:
+      platforms: arm64
+
+  - name: Set up Docker Buildx
+    uses: docker/setup-buildx-action@v3
+    with:
+      driver: docker-container
+      driver-opts: |
+        network=host
+
+  - name: Build Docker Image
+    id: build
+    shell: bash
+    run: |
+      set -e
+      TAG=$(echo ${{ github.sha }} | cut -c1-7)
+      REPO_NAME=${{ inputs.handler_name }}-ecr-repo
+
+      echo "Building Docker image for ${{ inputs.handler_name }}..."
+      cd aws-source/handlers_docker/${{ inputs.handler_name }}
+
+      # Build for local use - this creates a local image that can be pushed later
+      docker buildx build --platform linux/arm64 \
+        -t ${REPO_NAME}:$TAG \
+        -t ${REPO_NAME}:latest \
+        --provenance=false \
+        . --load
+
+      echo "Built image locally: ${REPO_NAME}:latest"
+      echo "image_tag=$TAG" >> $GITHUB_OUTPUT
+
+  - name: Verify Build
+    shell: bash
+    run: |
+      REPO_NAME=${{ inputs.handler_name }}-ecr-repo
+      echo "Verifying local image..."
+      docker images ${REPO_NAME}:latest

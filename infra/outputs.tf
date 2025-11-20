@@ -28,13 +28,19 @@ output "aws_region" {
   value       = var.region
 }
 
-output "aws_account_id" {
-  description = "AWS account ID"
-  value       = data.aws_caller_identity.current.account_id
-}
-
 output "results_bucket_name" {
   value       = module.results_bucket.bucket
   description = "S3 bucket name for storing processed CSV results"
   sensitive   = true
+}
+
+output "uploads_bucket_name" {
+  value       = module.file_bucket.bucket
+  description = "S3 bucket name for uploading input documents"
+  sensitive   = true
+}
+
+output "upload_url_function_url" {
+  value       = var.enable_function_url ? aws_lambda_function_url.create_s3_upload_url_url[0].function_url : "Function URL not enabled"
+  description = "Lambda Function URL for generating presigned upload URLs"
 }

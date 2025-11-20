@@ -1,0 +1,40 @@
+name: "Deploy to environment"
+description: "Deploys infrastructure using Terraform"
+
+inputs:
+  environment:
+    description: "The deployment environment (e.g., dev, test, prod)"
+    required: true
+  aws_region:
+    description: "The region of resources"
+    required: true
+  aws_account_id:
+    description: "The account that has the OIDC"
+    required: true
+
+runs:
+  using: "composite"
+
+  steps:
+  - name: "Generate terraform.auto.tfvars"
+    shell: bash
+    run: |
+      cat << EOF > ./infra/terraform.auto.tfvars
+      environment = "${{ inputs.environment }}"
+      EOF
+
+  - name: "Verify terraform.auto.tfvars"
+    shell: bash
+    run: cat ./infra/terraform.auto.tfvars
+
+  - name: "Run Terraform Apply"
+    shell: bash
+    run: |
+      # Ensure we're in the project root
+      cd ./infra
+
+      # Initialize Terraform
+      terraform init -backend-config="backend-configurations/backend-${{ inputs.environment }}.hcl"
+
+      # Apply the Terraform configuration using the generated terraform.auto.tfvars
+      terraform apply -auto-approve

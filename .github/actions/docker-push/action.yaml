@@ -1,0 +1,74 @@
+name: "Push Docker Images to Environment ECR"
+description: "Pushes pre-built Docker images to environment-specific ECR repositories"
+
+inputs:
+  handler_name:
+    description: "The Lambda handler name"
+    required: true
+  environment:
+    description: "Target environment (dev/test/prod)"
+    required: true
+  aws_region:
+    description: "AWS region"
+    required: true
+  aws_account_id:
+    description: "AWS account ID"
+    required: true
+
+outputs:
+  image_tag:
+    description: "Docker image tag pushed"
+    value: ${{ steps.push.outputs.image_tag }}
+
+runs:
+  using: "composite"
+  steps:
+
+  - name: "Configure AWS Credentials via OIDC"
+    uses: aws-actions/configure-aws-credentials@v4
+    with:
+      role-session-name: git-workflow-${{ inputs.environment }}
+      aws-region: ${{ inputs.aws_region }}
+      role-to-assume: arn:aws:iam::${{ inputs.aws_account_id }}:role/TerraformDeploy
+
+  - name: Login to AWS ECR
+    shell: bash
+    run: |
+      aws ecr get-login-password --region ${{ inputs.aws_region }} | docker login --username AWS --password-stdin ${{ inputs.aws_account_id }}.dkr.ecr.${{ inputs.aws_region }}.amazonaws.com
+
+  - name: Push Docker Image to Environment ECR
+    id: push
+    shell: bash
+    run: |
+      set -e
+      TAG=$(echo ${{ github.sha }} | cut -c1-7)
+      REPO_NAME=${{ inputs.handler_name }}-ecr-repo
+      ECR_URI=${{ inputs.aws_account_id }}.dkr.ecr.${{ inputs.aws_region }}.amazonaws.com/${REPO_NAME}
+
+      echo "Pushing image to ${{ inputs.environment }} environment ECR..."
+
+      # Check if ECR repo exists for this environment
+      if ! aws ecr describe-repositories --repository-names "$REPO_NAME" --region ${{ inputs.aws_region }} > /dev/null 2>&1; then
+        echo "ECR repository $REPO_NAME does not exist in ${{ inputs.environment }} environment. Skipping push."
+        echo "image_tag=skipped" >> $GITHUB_OUTPUT
+        exit 0
+      fi
+
+      # Tag the local image for this environment ECR
+      docker tag ${REPO_NAME}:latest ${ECR_URI}:$TAG
+      docker tag ${REPO_NAME}:latest ${ECR_URI}:latest
+
+      # Push to environment-specific ECR
+      docker push ${ECR_URI}:$TAG
+      docker push ${ECR_URI}:latest
+
+      echo "Successfully pushed to ${{ inputs.environment }} ECR: ${ECR_URI}:latest"
+      echo "image_tag=$TAG" >> $GITHUB_OUTPUT
+
+  - name: Verify Push
+    if: steps.push.outputs.image_tag != 'skipped'
+    shell: bash
+    run: |
+      echo "Verifying image in ${{ inputs.environment }} ECR..."
+      aws ecr describe-images --repository-name ${{ inputs.handler_name }}-ecr-repo \
+        --image-ids imageTag=${{ steps.push.outputs.image_tag }} 

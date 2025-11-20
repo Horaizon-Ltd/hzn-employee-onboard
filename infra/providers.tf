@@ -7,6 +7,7 @@ terraform {
       version               = "~> 5.94.1"
     }
   }
+  backend "s3" {}
 }
 
 provider "aws" {

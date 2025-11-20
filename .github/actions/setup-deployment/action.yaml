@@ -1,0 +1,24 @@
+name: "Setup Deployment Dependencies"
+description: "Sets up Terraform, installs dependencies"
+
+inputs:
+  aws_region:
+    description: "The region of resources"
+    required: true
+  aws_account_id:
+    description: "The account that has the OIDC"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+  - name: "Configure AWS Credentials via OIDC"
+    uses: aws-actions/configure-aws-credentials@v4
+    with:
+      role-session-name: git-workflow
+      aws-region: ${{ inputs.aws_region }}
+      role-to-assume: arn:aws:iam::${{ inputs.aws_account_id }}:role/TerraformDeploy
+
+  - uses: hashicorp/setup-terraform@v3
+    with:
+      terraform_version: 1.11.3

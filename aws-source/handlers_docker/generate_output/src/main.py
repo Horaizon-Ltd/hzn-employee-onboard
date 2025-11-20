@@ -66,53 +66,80 @@ def lambda_handler(event, context):
             logger.info("Using event directly as request_data")
             request_data = event
 
-        # Handle multiple files
-        files = request_data.get('files', [])
-        if not files:
-            # Backward compatibility for single file
-            file_content = request_data.get('file_content')
-            file_name = request_data.get('file_name', 'document.pdf')
-            file_type = request_data.get('file_type', 'unknown')
-            if file_content:
-                files = [{
-                    'file_type': file_type,
-                    'file_name': file_name,
-                    'file_format': file_name.split('.')[-1].lower(),
-                    'file_data': file_content
-                }]
-
-        if not files:
-            raise ValueError("files array is required")
-
-        logger.info(f"Processing {len(files)} files")
-        for f in files:
-            logger.info(f"  - {f.get('file_type')}: {f.get('file_name')}")
+        # Check if files are provided via S3 keys or base64
+        s3_files = request_data.get('s3_files', [])
+        base64_files = request_data.get('files', [])
 
         # Create temp directory
         temp_dir = tempfile.mkdtemp()
         processed_data = {}
-
         file_tasks = []
-        for file_info in files:
-            file_type = file_info.get('file_type')
-            file_name = file_info.get('file_name')
-            file_format = file_info.get('file_format')
-            file_data = file_info.get('file_data')
 
-            if not all([file_type, file_name, file_format, file_data]):
-                logger.warning(f"Skipping incomplete file info: {file_info}")
-                continue
+        # Handle S3-based files (new approach)
+        if s3_files:
+            logger.info(f"Processing {len(s3_files)} files from S3")
+            uploads_bucket = os.environ.get('UPLOADS_BUCKET')
 
-            # Decode and save file
-            decoded_data = base64.b64decode(file_data)
-            input_file = os.path.join(temp_dir, file_name)
+            if not uploads_bucket:
+                raise ValueError("UPLOADS_BUCKET environment variable not set")
 
-            with open(input_file, 'wb') as f:
-                f.write(decoded_data)
+            s3_client = boto3.client('s3', config=Config(signature_version='s3v4'))
 
-            file_tasks.append((input_file, file_type, file_format, file_name))
-            logger.info(f"Prepared {file_type}: {file_name}")
+            for s3_file in s3_files:
+                s3_key = s3_file.get('s3_key')
+                file_type = s3_file.get('file_type')
 
+                if not s3_key or not file_type:
+                    logger.warning(f"Skipping incomplete S3 file info: {s3_file}")
+                    continue
+
+                # Extract filename and format from S3 key
+                file_name = os.path.basename(s3_key)
+                file_format = file_name.split('.')[-1].lower()
+
+                logger.info(f"Downloading {file_type} from S3: {s3_key}")
+
+                # Download file from S3
+                input_file = os.path.join(temp_dir, file_name)
+                try:
+                    s3_client.download_file(uploads_bucket, s3_key, input_file)
+                    logger.info(f"Downloaded {file_name} successfully")
+
+                    file_tasks.append((input_file, file_type, file_format, file_name))
+                except Exception as e:
+                    logger.error(f"Failed to download {s3_key}: {e}")
+                    continue
+
+        # Handle base64 files (backward compatibility)
+        elif base64_files:
+            logger.info(f"Processing {len(base64_files)} files from base64")
+
+            for file_info in base64_files:
+                file_type = file_info.get('file_type')
+                file_name = file_info.get('file_name')
+                file_format = file_info.get('file_format')
+                file_data = file_info.get('file_data')
+
+                if not all([file_type, file_name, file_format, file_data]):
+                    logger.warning(f"Skipping incomplete file info: {file_info}")
+                    continue
+
+                # Decode and save file
+                decoded_data = base64.b64decode(file_data)
+                input_file = os.path.join(temp_dir, file_name)
+
+                with open(input_file, 'wb') as f:
+                    f.write(decoded_data)
+
+                file_tasks.append((input_file, file_type, file_format, file_name))
+                logger.info(f"Prepared {file_type}: {file_name}")
+        else:
+            raise ValueError("Either s3_files or files array is required")
+
+        if not file_tasks:
+            raise ValueError("No valid files to process")
+
+        logger.info(f"Total files prepared for processing: {len(file_tasks)}")
         logger.info(f"Starting smart parallel processing of {len(file_tasks)} files...")
 
         # Separate low-memory (Excel) and high-memory (PDF) tasks

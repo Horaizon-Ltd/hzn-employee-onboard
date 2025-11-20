@@ -11,6 +11,7 @@ import awsConfig from './aws-config';
 Amplify.configure(awsConfig);
 
 const LAMBDA_FUNCTION_URL = process.env.REACT_APP_LAMBDA_URL;
+const UPLOAD_URL_FUNCTION_URL = process.env.REACT_APP_UPLOAD_URL;
 
 const FILE_TYPES = [
   {
@@ -60,16 +61,27 @@ function App() {
     setSuccess(false);
   };
 
-  const fileToBase64 = (file) => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => {
-        const base64 = reader.result.split(',')[1];
-        resolve(base64);
-      };
-      reader.onerror = error => reject(error);
+  const uploadFileToS3 = async (file, uploadUrl, fields) => {
+    const formData = new FormData();
+
+    // Add all fields from presigned POST
+    Object.entries(fields).forEach(([key, value]) => {
+      formData.append(key, value);
     });
+
+    // Add the file last
+    formData.append('file', file);
+
+    const response = await fetch(uploadUrl, {
+      method: 'POST',
+      body: formData
+    });
+
+    if (!response.ok) {
+      throw new Error(`S3 upload failed: ${response.status}`);
+    }
+
+    return response;
   };
 
   const handleProcess = async () => {
@@ -91,23 +103,39 @@ function App() {
         throw new Error('Not authenticated. Please login again.');
       }
 
-      // Convert all selected files to base64
-      const filesArray = await Promise.all(
-        Object.entries(selectedFiles).map(async ([fileType, file]) => {
-          const base64Data = await fileToBase64(file);
-          const fileFormat = file.name.split('.').pop().toLowerCase();
+      // Step 1: Get presigned upload URLs
+      const filesMetadata = Object.entries(selectedFiles).map(([fileType, file]) => ({
+        file_type: fileType,
+        file_name: file.name
+      }));
 
-          return {
-            file_type: fileType,
-            file_name: file.name,
-            file_format: fileFormat,
-            file_data: base64Data
-          };
+      const uploadUrlsResponse = await fetch(UPLOAD_URL_FUNCTION_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          files: filesMetadata
         })
-      );
+      });
 
-      // Call Lambda function with JWT token
-      // Set timeout to 15 minutes (Lambda Function URL max) for large PDF processing
+      if (!uploadUrlsResponse.ok) {
+        throw new Error(`Failed to get upload URLs: ${uploadUrlsResponse.status}`);
+      }
+
+      const uploadUrlsData = await uploadUrlsResponse.json();
+      const { session_id, upload_urls } = uploadUrlsData;
+
+      // Step 2: Upload all files to S3 in parallel
+      const uploadPromises = upload_urls.map(urlInfo => {
+        const file = selectedFiles[urlInfo.file_type];
+        return uploadFileToS3(file, urlInfo.upload_url, urlInfo.fields)
+          .then(() => ({ file_type: urlInfo.file_type, s3_key: urlInfo.s3_key }));
+      });
+
+      const uploadedFiles = await Promise.all(uploadPromises);
+
+      // Step 3: Call processing Lambda with S3 keys
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 15 * 60 * 1000); // 15 minutes
 
@@ -118,7 +146,8 @@ function App() {
           'Authorization': `Bearer ${idToken}`,
         },
         body: JSON.stringify({
-          files: filesArray
+          s3_files: uploadedFiles,
+          session_id: session_id
         }),
         signal: controller.signal
       });
