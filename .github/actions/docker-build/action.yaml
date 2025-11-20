@@ -38,10 +38,12 @@ runs:
       echo "Building Docker image for ${{ inputs.handler_name }}..."
       cd aws-source/handlers_docker/${{ inputs.handler_name }}
 
-      # Build for local use - this creates a local image that can be pushed later
+      # Build with GitHub Actions cache for faster subsequent builds
       docker buildx build --platform linux/arm64 \
         -t ${REPO_NAME}:$TAG \
         -t ${REPO_NAME}:latest \
+        --cache-from type=gha \
+        --cache-to type=gha,mode=max \
         --provenance=false \
         . --load
 
