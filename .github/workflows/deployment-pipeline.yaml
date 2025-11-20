@@ -139,6 +139,7 @@ jobs:
         uses: actions/upload-pages-artifact@v3
         with:
           path: ./frontend/build
+          retention-days: 1
 
   publish-frontend:
     name: Publish to GitHub Pages
