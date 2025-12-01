@@ -51,6 +51,7 @@ function App() {
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
+  const [uploadKey, setUploadKey] = useState(0); // Key to force re-render of file inputs
 
   const handleFileSelect = (fileType, file) => {
     setSelectedFiles(prev => ({
@@ -180,6 +181,7 @@ function App() {
 
           setSuccess(true);
           setSelectedFiles({});
+          setUploadKey(prev => prev + 1); // Reset file inputs
         } else {
           throw new Error('No download URL received from server');
         }
@@ -189,6 +191,8 @@ function App() {
     } catch (err) {
       console.error('Error:', err);
       setError(err.message || 'An error occurred while processing files');
+      setSelectedFiles({}); // Clear files on error so user must reupload
+      setUploadKey(prev => prev + 1); // Reset file inputs
     } finally {
       setProcessing(false);
     }
@@ -233,7 +237,7 @@ function App() {
               <div className="file-uploaders">
                 {FILE_TYPES.map(fileType => (
                   <FileUploader
-                    key={fileType.type}
+                    key={`${fileType.type}-${uploadKey}`}
                     fileType={fileType.type}
                     label={fileType.label}
                     acceptedFormats={fileType.formats}
