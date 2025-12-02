@@ -171,7 +171,7 @@ function App() {
           const blobUrl = window.URL.createObjectURL(blob);
           const link = document.createElement('a');
           link.href = blobUrl;
-          link.download = result.file_name || 'danlon_processed_output.csv';
+          link.download = result.file_name || 'danlon_processed_output.xlsx';
           document.body.appendChild(link);
           link.click();
           document.body.removeChild(link);
@@ -211,7 +211,7 @@ function App() {
             <div className="header-content">
               <div>
                 <h1>Employee Onboarding Document Processor</h1>
-                <p className="subtitle">Upload employee documents to generate Danlon CSV</p>
+                <p className="subtitle">Upload employee documents to generate Danlon Excel</p>
               </div>
               <div className="user-info">
                 <span className="user-email">👤 {user?.signInDetails?.loginId || user?.username}</span>
@@ -269,7 +269,7 @@ function App() {
 
               {success && (
                 <div className="message success-message">
-                  ✅ Processing complete! CSV file downloaded.
+                  ✅ Processing complete! Excel file downloaded.
                 </div>
               )}
 
