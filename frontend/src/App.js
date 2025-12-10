@@ -23,14 +23,14 @@ const FILE_TYPES = [
   {
     type: 'employee_active',
     label: 'Active Employee List (Medarbejderoversigt)',
-    formats: '.xlsx',
-    acceptedFormat: 'xlsx'
+    formats: '.xlsx, .xls',
+    acceptedFormat: 'xlsx,xls'
   },
   {
     type: 'employee_holiday',
     label: 'Holiday (Feriepengeforpligtelse)',
-    formats: '.xlsx',
-    acceptedFormat: 'xlsx'
+    formats: '.xlsx, .xls',
+    acceptedFormat: 'xlsx,xls'
   },
   {
     type: 'employee_general',
