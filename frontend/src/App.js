@@ -34,7 +34,7 @@ const FILE_TYPES = [
   },
   {
     type: 'employee_general',
-    label: 'Employee General (Medarbejder Stamkort)',
+    label: 'Employee General (Medarbejderstamkort)',
     formats: '.pdf',
     acceptedFormat: 'pdf'
   },
@@ -229,7 +229,7 @@ function App() {
                 <strong>💡 Important:</strong> Upload at least one of these files:
                 <ul>
                   <li><strong>Active Employee List (Medarbejderoversigt)</strong> - Recommended as priority. Employee numbers from this file will be used as the primary key.</li>
-                  <li><strong>Employee General (Medarbejder Stamkort)</strong> - Alternative source for employee numbers if Active List is not provided.</li>
+                  <li><strong>Employee General (Medarbejderstamkort)</strong> - Alternative source for employee numbers if Active List is not provided.</li>
                   <li><strong>Payslip (Lønseddel)</strong> - Can also be used as employee number source if the above are not available.</li>
                 </ul>
               </div>
