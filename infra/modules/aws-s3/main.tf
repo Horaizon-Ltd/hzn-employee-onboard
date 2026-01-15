@@ -51,7 +51,7 @@ resource "aws_s3_bucket_cors_configuration" "bucket_cors" {
 
   cors_rule {
     allowed_headers = ["*"]
-    allowed_methods = ["GET", "HEAD"]
+    allowed_methods = ["GET", "HEAD", "POST", "PUT"]
     allowed_origins = ["*"]
     expose_headers  = ["ETag", "Content-Length", "Content-Type"]
     max_age_seconds = 3000

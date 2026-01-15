@@ -38,9 +38,9 @@ resource "aws_lambda_function" "lambda" {
   image_uri     = data.aws_ecr_image.latest_image.image_uri
   package_type  = "Image"
   timeout       = var.timeout
-  memory_size   = 3008
+  memory_size   = 10240
   publish       = true
-  architectures = ["x86_64"]
+  architectures = ["arm64"]
   layers        = var.layers
 
   # lifecycle {

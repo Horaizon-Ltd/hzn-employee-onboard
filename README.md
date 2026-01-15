@@ -91,15 +91,17 @@ This creates:
 ```bash
 cd aws-source/handlers_docker/generate_output
 
-# Build Docker image (old version)
-DOCKER_BUILDKIT=0 docker build --platform linux/amd64 -t employee-onboarding-generate-output-ecr-repo:latest .    
+# Build Docker image
+DOCKER_BUILDKIT=0 docker build --platform linux/arm64 -t employee-onboarding-generate-output-ecr-repo:latest .
+
+# Login to ECR
+aws ecr get-login-password --region <REGION> | docker login --username AWS --password-stdin <AWS_ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com
 
 # Tag for ECR
-docker tag employee-onboarding-lambda:latest <AWS_ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/employee-onboarding-generate-output:latest
+docker tag employee-onboarding-generate-output-ecr-repo:latest <AWS_ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/employee-onboarding-generate-output-ecr-repo:latest
 
 # Push to ECR
-aws ecr get-login-password --region <REGION> | docker login --username AWS --password-stdin <AWS_ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com
-docker push <AWS_ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/employee-onboarding-generate-output:latest
+docker push <AWS_ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/employee-onboarding-generate-output-ecr-repo:latest
 
 # Update Lambda
 cd ../../../infra
