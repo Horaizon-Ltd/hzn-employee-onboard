@@ -140,6 +140,10 @@ function App() {
   };
 
   const handleProcess = async () => {
+    if (!selectedFiles.employee_active) {
+      setError('Please upload the Active Employee List to start processing');
+      return;
+    }
     if (Object.keys(selectedFiles).length === 0) {
       setError('Please select at least one file to process');
       return;
@@ -243,6 +247,7 @@ function App() {
   };
 
   const selectedCount = Object.keys(selectedFiles).length;
+  const hasActiveEmployee = Boolean(selectedFiles.employee_active);
 
   return (
     <Authenticator
@@ -267,14 +272,14 @@ function App() {
           <main className="App-main">
             <div className="upload-section">
               <h2>Select Documents</h2>
-              <p className="instruction">Choose the documents you want to process (at least one required):</p>
+              <p className="instruction">Choose the documents you want to process (Active Employee List required):</p>
 
               <div className="info-box">
-                <strong>💡 Important:</strong> Upload at least one of these files:
+                <strong>💡 Important:</strong> The Active Employee List is required to start processing.
                 <ul>
-                  <li><strong>Active Employee List (Medarbejderoversigt)</strong> - Recommended as priority. Employee numbers from this file will be used as the primary key.</li>
-                  <li><strong>Employee General (Medarbejderstamkort)</strong> - Alternative source for employee numbers if Active List is not provided.</li>
-                  <li><strong>Payslip (Lønseddel)</strong> - Can also be used as employee number source if the above are not available.</li>
+                  <li><strong>Active Employee List (Medarbejderoversigt)</strong> - Required. Employee numbers from this file are used as the primary key.</li>
+                  <li><strong>Employee General (Medarbejderstamkort)</strong> - Optional supplemental source for employee details.</li>
+                  <li><strong>Payslip (Lønseddel)</strong> - Optional supplemental source for employee details.</li>
                 </ul>
               </div>
 
@@ -298,7 +303,7 @@ function App() {
 
                 <button
                   onClick={handleProcess}
-                  disabled={processing || selectedCount === 0}
+                  disabled={processing || !hasActiveEmployee}
                   className="process-button"
                 >
                   {processing ? 'Processing...' : 'Process Documents'}
