@@ -134,6 +134,8 @@ jobs:
           REACT_APP_USER_POOL_CLIENT_ID: ${{ secrets.REACT_APP_USER_POOL_CLIENT_ID }}
           REACT_APP_LAMBDA_URL: ${{ secrets.REACT_APP_LAMBDA_URL }}
           REACT_APP_UPLOAD_URL: ${{ secrets.REACT_APP_UPLOAD_URL }}
+          REACT_APP_TRIGGER_JOB_URL: ${{ secrets.REACT_APP_TRIGGER_JOB_URL }}
+          REACT_APP_CHECK_STATUS_URL: ${{ secrets.REACT_APP_CHECK_STATUS_URL }}
         run: npm run build
 
       - name: Upload artifact
