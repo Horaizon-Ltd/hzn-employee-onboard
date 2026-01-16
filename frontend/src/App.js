@@ -10,8 +10,11 @@ import awsConfig from './aws-config';
 // Configure Amplify
 Amplify.configure(awsConfig);
 
-const LAMBDA_FUNCTION_URL = process.env.REACT_APP_LAMBDA_URL;
 const UPLOAD_URL_FUNCTION_URL = process.env.REACT_APP_UPLOAD_URL;
+const TRIGGER_JOB_URL = process.env.REACT_APP_TRIGGER_JOB_URL;
+const CHECK_STATUS_URL = process.env.REACT_APP_CHECK_STATUS_URL;
+
+const POLLING_INTERVAL_MS = 10000; // 10 seconds
 
 const FILE_TYPES = [
   {
@@ -52,6 +55,7 @@ function App() {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
   const [uploadKey, setUploadKey] = useState(0); // Key to force re-render of file inputs
+  const [jobStatus, setJobStatus] = useState(null); // Current job status for display
 
   const handleFileSelect = (fileType, file) => {
     setSelectedFiles(prev => ({
@@ -85,6 +89,56 @@ function App() {
     return response;
   };
 
+  const downloadFile = async (downloadUrl, fileName) => {
+    const fileResponse = await fetch(downloadUrl);
+    const blob = await fileResponse.blob();
+
+    const blobUrl = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.download = fileName || 'danlon_processed_output.xlsx';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    window.URL.revokeObjectURL(blobUrl);
+  };
+
+  const pollJobStatus = async (jobId) => {
+    return new Promise((resolve, reject) => {
+      const poll = async () => {
+        try {
+          const response = await fetch(`${CHECK_STATUS_URL}?job_id=${jobId}`, {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+            }
+          });
+
+          if (!response.ok) {
+            throw new Error(`Failed to check status: ${response.status}`);
+          }
+
+          const data = await response.json();
+          setJobStatus(data.status);
+
+          if (data.status === 'DONE') {
+            resolve(data);
+          } else if (data.status === 'ERROR') {
+            reject(new Error(data.error || 'Processing failed'));
+          } else {
+            // Still processing, poll again in 10 seconds
+            setTimeout(poll, POLLING_INTERVAL_MS);
+          }
+        } catch (err) {
+          reject(err);
+        }
+      };
+
+      poll();
+    });
+  };
+
   const handleProcess = async () => {
     if (Object.keys(selectedFiles).length === 0) {
       setError('Please select at least one file to process');
@@ -94,6 +148,7 @@ function App() {
     setProcessing(true);
     setError(null);
     setSuccess(false);
+    setJobStatus('UPLOADING');
 
     try {
       // Get JWT token from Amplify
@@ -128,6 +183,7 @@ function App() {
       const { session_id, upload_urls } = uploadUrlsData;
 
       // Step 2: Upload all files to S3 in parallel
+      setJobStatus('UPLOADING');
       const uploadPromises = upload_urls.map(urlInfo => {
         const file = selectedFiles[urlInfo.file_type];
         return uploadFileToS3(file, urlInfo.upload_url, urlInfo.fields)
@@ -136,11 +192,9 @@ function App() {
 
       const uploadedFiles = await Promise.all(uploadPromises);
 
-      // Step 3: Call processing Lambda with S3 keys
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15 * 60 * 1000); // 15 minutes
-
-      const response = await fetch(LAMBDA_FUNCTION_URL, {
+      // Step 3: Trigger the processing job
+      setJobStatus('STARTING');
+      const triggerResponse = await fetch(TRIGGER_JOB_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -149,52 +203,42 @@ function App() {
         body: JSON.stringify({
           s3_files: uploadedFiles,
           session_id: session_id
-        }),
-        signal: controller.signal
+        })
       });
-      clearTimeout(timeoutId);
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+      if (!triggerResponse.ok) {
+        throw new Error(`Failed to start processing: ${triggerResponse.status}`);
       }
 
-      const result = await response.json();
+      const triggerData = await triggerResponse.json();
+      const jobId = triggerData.job_id;
 
-      if (result.success) {
-        // Download the CSV from S3 presigned URL
-        if (result.download_url) {
-          // Fetch the file from S3 and trigger download
-          const fileResponse = await fetch(result.download_url);
-          const blob = await fileResponse.blob();
+      if (!jobId) {
+        throw new Error('No job ID received from server');
+      }
 
-          // Create blob URL and trigger download
-          const blobUrl = window.URL.createObjectURL(blob);
-          const link = document.createElement('a');
-          link.href = blobUrl;
-          link.download = result.file_name || 'danlon_processed_output.xlsx';
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
+      // Step 4: Poll for job completion
+      setJobStatus('PENDING');
+      const result = await pollJobStatus(jobId);
 
-          // Clean up blob URL
-          window.URL.revokeObjectURL(blobUrl);
-
-          setSuccess(true);
-          setSelectedFiles({});
-          setUploadKey(prev => prev + 1); // Reset file inputs
-        } else {
-          throw new Error('No download URL received from server');
-        }
+      // Step 5: Download the file
+      if (result.download_url) {
+        await downloadFile(result.download_url, result.file_name);
+        setSuccess(true);
+        setSelectedFiles({});
+        setUploadKey(prev => prev + 1);
       } else {
-        throw new Error(result.error || 'Processing failed');
+        throw new Error('No download URL received');
       }
+
     } catch (err) {
       console.error('Error:', err);
       setError(err.message || 'An error occurred while processing files');
-      setSelectedFiles({}); // Clear files on error so user must reupload
-      setUploadKey(prev => prev + 1); // Reset file inputs
+      setSelectedFiles({});
+      setUploadKey(prev => prev + 1);
     } finally {
       setProcessing(false);
+      setJobStatus(null);
     }
   };
 
@@ -276,8 +320,17 @@ function App() {
               {processing && (
                 <div className="processing-info">
                   <div className="spinner"></div>
-                  <p>Processing your documents... This may take 5-10 minutes for OCR processing.</p>
-                  <p className="processing-note">Please wait - your CSV will download automatically when ready.</p>
+                  <p>
+                    {jobStatus === 'UPLOADING' && 'Uploading files to server...'}
+                    {jobStatus === 'STARTING' && 'Starting processing job...'}
+                    {jobStatus === 'PENDING' && 'Job queued, waiting to start...'}
+                    {jobStatus === 'PROCESSING' && 'Processing documents (this may take 15-20 minutes for OCR)...'}
+                    {!jobStatus && 'Processing...'}
+                  </p>
+                  <p className="processing-note">Please wait - your Excel file will download automatically when ready.</p>
+                  {(jobStatus === 'PENDING' || jobStatus === 'PROCESSING') && (
+                    <p className="processing-note">Checking status every 10 seconds...</p>
+                  )}
                 </div>
               )}
             </div>

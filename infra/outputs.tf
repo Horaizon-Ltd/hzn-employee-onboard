@@ -44,3 +44,18 @@ output "upload_url_function_url" {
   value       = var.enable_function_url ? aws_lambda_function_url.create_s3_upload_url_url[0].function_url : "Function URL not enabled"
   description = "Lambda Function URL for generating presigned upload URLs"
 }
+
+output "trigger_job_function_url" {
+  value       = var.enable_function_url ? aws_lambda_function_url.trigger_job_url[0].function_url : "Function URL not enabled"
+  description = "Lambda Function URL for triggering processing jobs"
+}
+
+output "check_status_function_url" {
+  value       = var.enable_function_url ? aws_lambda_function_url.check_status_url[0].function_url : "Function URL not enabled"
+  description = "Lambda Function URL for checking job status"
+}
+
+output "jobs_table_name" {
+  value       = module.jobs_table.table_name
+  description = "DynamoDB table name for job status tracking"
+}

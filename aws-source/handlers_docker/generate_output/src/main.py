@@ -30,6 +30,61 @@ logger.setLevel(logging.INFO)
 PYTESSERACT_CONFIG = "--oem 3 --psm 4"
 PYTESSERACT_LANG = "dan"
 
+# DynamoDB configuration for job status tracking
+JOBS_TABLE = os.getenv("JOBS_TABLE")
+_aws_region = os.getenv("AWS_REGION", "eu-west-1")
+dynamodb = boto3.resource('dynamodb', region_name=_aws_region)
+
+
+def update_job_status(job_id: str, status: str, **kwargs) -> None:
+    """
+    Update job status in DynamoDB.
+
+    Args:
+        job_id: The job ID to update
+        status: New status (PROCESSING, DONE, ERROR)
+        **kwargs: Additional fields to update (download_url, error, records_processed, etc.)
+    """
+    if not JOBS_TABLE or not job_id:
+        logger.warning(f"Skipping job status update - JOBS_TABLE: {JOBS_TABLE}, job_id: {job_id}")
+        return
+
+    try:
+        jobs_table = dynamodb.Table(JOBS_TABLE)
+
+        # Build update expression
+        update_parts = ['#status = :status', 'updated_at = :updated_at']
+        attr_names = {'#status': 'status'}
+        attr_values = {
+            ':status': status,
+            ':updated_at': datetime.utcnow().isoformat()
+        }
+
+        # Add optional fields
+        for key, value in kwargs.items():
+            if value is not None:
+                # Use expression attribute name for reserved words
+                safe_key = f'#{key}' if key in ['error', 'status'] else key
+                if key in ['error', 'status']:
+                    attr_names[safe_key] = key
+                update_parts.append(f'{safe_key} = :{key}')
+                attr_values[f':{key}'] = value
+
+        update_expression = 'SET ' + ', '.join(update_parts)
+
+        jobs_table.update_item(
+            Key={'job_id': job_id},
+            UpdateExpression=update_expression,
+            ExpressionAttributeNames=attr_names if attr_names else None,
+            ExpressionAttributeValues=attr_values
+        )
+
+        logger.info(f"Updated job {job_id} status to {status}")
+
+    except Exception as e:
+        logger.error(f"Failed to update job status: {e}")
+        # Don't raise - status update failure shouldn't stop processing
+
 # Email coordinate for employee general PDF
 general_employee_email_coordinate = (1, 1107, 1651, 1189)
 
@@ -166,6 +221,8 @@ def format_european_float(value, force_decimal=True):
     return formatted
 
 def lambda_handler(event, context):
+    job_id = None  # Initialize job_id for error handling
+
     try:
         logger.info("=== Lambda Invocation Started ===")
         logger.info(f"Event keys: {list(event.keys())}")
@@ -181,6 +238,12 @@ def lambda_handler(event, context):
         else:
             logger.info("Using event directly as request_data")
             request_data = event
+
+        # Extract job_id if provided (async mode)
+        job_id = request_data.get('job_id')
+        if job_id:
+            logger.info(f"Processing job: {job_id}")
+            update_job_status(job_id, 'PROCESSING')
 
         # Check if files are provided via S3 keys or base64
         s3_files = request_data.get('s3_files', [])
@@ -476,6 +539,19 @@ def lambda_handler(event, context):
         logger.info(f"Files processed: {len(file_tasks)}")
         logger.info(f"Summary: {response_body['processing_summary']}")
 
+        # Update job status to DONE if job_id is provided
+        if job_id:
+            update_job_status(
+                job_id,
+                'DONE',
+                completed_at=datetime.utcnow().isoformat(),
+                download_url=download_url,
+                file_name="danlon_processed_output.xlsx",
+                records_processed=len(final_result),
+                files_processed=len(file_tasks),
+                processing_summary=response_body['processing_summary']
+            )
+
         # Create JSON response
         logger.info("Converting response to JSON...")
         response_json = json.dumps(response_body)
@@ -495,6 +571,14 @@ def lambda_handler(event, context):
         logger.error(f"Error type: {type(e).__name__}")
         logger.error(f"Error: {str(e)}")
         logger.error(traceback.format_exc())
+
+        # Update job status to ERROR if job_id is provided
+        if job_id:
+            update_job_status(
+                job_id,
+                'ERROR',
+                error=f"{type(e).__name__}: {str(e)}"
+            )
 
         error_response = {
             'statusCode': 500,
