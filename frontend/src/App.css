@@ -42,8 +42,9 @@ body {
   flex: 1;
   padding: 2rem;
   display: flex;
-  justify-content: center;
-  align-items: flex-start;
+  flex-direction: column;
+  align-items: center;
+  gap: 2rem;
 }
 
 .upload-section {
@@ -313,4 +314,103 @@ body {
   display: inline;
   color: #1976d2;
   margin-bottom: 0;
+}
+
+/* Guide section styles */
+.guide-section {
+  background: white;
+  border-radius: 12px;
+  padding: 2.5rem;
+  max-width: 800px;
+  width: 100%;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+}
+
+.guide-section h2 {
+  color: #333;
+  margin-bottom: 1rem;
+  font-size: 1.8rem;
+  border-bottom: 2px solid #667eea;
+  padding-bottom: 0.5rem;
+}
+
+.guide-intro {
+  color: #555;
+  font-size: 1.05rem;
+  line-height: 1.6;
+  margin-bottom: 1.5rem;
+}
+
+.guide-step {
+  background: #f8f9ff;
+  border-radius: 8px;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1rem;
+  border-left: 4px solid #667eea;
+}
+
+.guide-step:last-child {
+  margin-bottom: 0;
+}
+
+.guide-step h3 {
+  color: #333;
+  font-size: 1.1rem;
+  margin-bottom: 0.75rem;
+}
+
+.guide-step p {
+  color: #555;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  margin-bottom: 0.5rem;
+}
+
+.guide-step ul,
+.guide-step ol {
+  margin-left: 1.5rem;
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+  padding-left: 0.5rem;
+}
+
+.guide-step li {
+  color: #555;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  margin-bottom: 0.25rem;
+}
+
+.guide-step li strong {
+  color: #333;
+}
+
+.guide-note {
+  background: #fff3e0;
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  border-left: 3px solid #ff9800;
+  margin-top: 0.75rem;
+  font-size: 0.9rem !important;
+}
+
+.guide-step a {
+  color: #667eea;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.guide-step a:hover {
+  text-decoration: underline;
+  color: #764ba2;
+}
+
+@media (max-width: 768px) {
+  .guide-section {
+    padding: 1.5rem;
+  }
+
+  .guide-step {
+    padding: 1rem;
+  }
 }

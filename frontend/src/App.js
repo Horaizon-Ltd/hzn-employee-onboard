@@ -19,32 +19,32 @@ const POLLING_INTERVAL_MS = 10000; // 10 seconds
 const FILE_TYPES = [
   {
     type: 'employee_payslip',
-    label: 'Payslip (Lønseddel)',
-    formats: '.pdf',
+    label: 'Upload rapporten: Lønseddel (Payslip)',
+    formats: 'pdf',
     acceptedFormat: 'pdf'
   },
   {
     type: 'employee_active',
-    label: 'Active Employee List (Medarbejderoversigt)',
+    label: 'Upload rapporten: Medarbejderoversigt (List of active employees)',
     formats: '.xlsx, .xls',
     acceptedFormat: 'xlsx,xls'
   },
   {
     type: 'employee_holiday',
-    label: 'Holiday (Feriepengeforpligtelse)',
+    label: 'Upload rapporten: Feriepengeforpligtelse (Holiday pay obligation)',
     formats: '.xlsx, .xls',
     acceptedFormat: 'xlsx,xls'
   },
   {
     type: 'employee_general',
-    label: 'Employee General (Medarbejderstamkort)',
-    formats: '.pdf',
+    label: 'Upload rapporten: Medarbejderstamkort (Employee masterdata)',
+    formats: 'pdf',
     acceptedFormat: 'pdf'
   },
   {
     type: 'employee_list',
-    label: 'Employee List (Medarbejderliste)',
-    formats: '.pdf',
+    label: 'Upload rapporten: Medarbejderliste (Employee List)',
+    formats: 'pdf',
     acceptedFormat: 'pdf'
   }
 ];
@@ -141,11 +141,11 @@ function App() {
 
   const handleProcess = async () => {
     if (!selectedFiles.employee_active) {
-      setError('Please upload the Active Employee List to start processing');
+      setError('Upload venligst Medarbejderoversigt for at starte konverteringen');
       return;
     }
     if (Object.keys(selectedFiles).length === 0) {
-      setError('Please select at least one file to process');
+      setError('Vælg venligst mindst én fil at konvertere');
       return;
     }
 
@@ -237,7 +237,7 @@ function App() {
 
     } catch (err) {
       console.error('Error:', err);
-      setError(err.message || 'An error occurred while processing files');
+      setError(err.message || 'Der opstod en fejl under behandlingen af filerne');
       setSelectedFiles({});
       setUploadKey(prev => prev + 1);
     } finally {
@@ -259,29 +259,82 @@ function App() {
           <header className="App-header">
             <div className="header-content">
               <div>
-                <h1>Employee Onboarding Document Processor</h1>
-                <p className="subtitle">Upload employee documents to generate Danlon Excel</p>
+                <h1>Konverteringsværktøj. Fra Danløn til Zenegy®</h1>
+                <p className="subtitle">Hurtig onboarding af medarbejdere</p>
               </div>
               <div className="user-info">
                 <span className="user-email">👤 {user?.signInDetails?.loginId || user?.username}</span>
-                <button onClick={signOut} className="signout-button">Sign Out</button>
+                <button onClick={signOut} className="signout-button">Log ud</button>
               </div>
             </div>
           </header>
 
           <main className="App-main">
-            <div className="upload-section">
-              <h2>Select Documents</h2>
-              <p className="instruction">Choose the documents you want to process (Active Employee List required):</p>
+            <div className="guide-section">
+              <h2>Vejledning</h2>
+              <p className="guide-intro">
+                Dette værktøj konverterer rapporter fra Danløn til et format, der kan importeres direkte i Zenegy® Payroll.
+                Følg nedenstående trin for at gennemføre konverteringen.
+              </p>
 
-              <div className="info-box">
-                <strong>💡 Important:</strong> The Active Employee List is required to start processing.
+              <div className="guide-step">
+                <h3>Trin 1 – Download rapporter fra Danløn</h3>
+                <p>Log ind i Danløn og download følgende rapporter:</p>
                 <ul>
-                  <li><strong>Active Employee List (Medarbejderoversigt)</strong> - Required. Employee numbers from this file are used as the primary key.</li>
-                  <li><strong>Employee General (Medarbejderstamkort)</strong> - Optional supplemental source for employee details.</li>
-                  <li><strong>Payslip (Lønseddel)</strong> - Optional supplemental source for employee details.</li>
+                  <li><strong>Medarbejderoversigt</strong> – Excel-fil (.xlsx)</li>
+                  <li><strong>Medarbejder stamdata</strong> – PDF-fil (.pdf)</li>
+                  <li><strong>Lønseddel</strong> – PDF-fil (.pdf)</li>
+                  <li><strong>Skyldig feriepenge (Feriepengeforpligtelse)</strong> – Excel-fil (.xlsx)</li>
+                  <li><strong>Medarbejderliste</strong> – PDF-fil (.pdf)</li>
                 </ul>
               </div>
+
+              <div className="guide-step">
+                <h3>Trin 2 – Upload rapporterne til filkonverteren</h3>
+                <p className="guide-note">
+                  <strong>Vigtigt!</strong> Vi anbefaler at du uploader alle filerne, da det giver det mest komplette resultat, men du skal uploade mindst én af disse filer:
+                </p>
+                <ul>
+                  <li>
+                    <strong>Aktiv medarbejderliste (Medarbejderoversigt)</strong><br />
+                    Anbefales som førstevalg. Medarbejdernumre fra denne fil bruges som primær nøgle.
+                  </li>
+                  <li>
+                    <strong>Medarbejder generelt (Medarbejder Stamkort)</strong><br />
+                    Alternativ kilde til medarbejdernumre, hvis Aktiv medarbejderliste mangler.
+                  </li>
+                  <li>
+                    <strong>Lønseddel (Lønseddel)</strong><br />
+                    Kan også bruges til medarbejdernumre, hvis de to ovenstående ikke er tilgængelige.
+                  </li>
+                </ul>
+              </div>
+
+              <div className="guide-step">
+                <h3>Trin 3 – Klik på knappen "Konvertér dokumenter"</h3>
+                <p>
+                  Når behandlingen er færdig, konverteres alle relevante data og samles i én Excel-fil. Filen lander i din downloadmappe, klar til import i Zenegy.
+                </p>
+              </div>
+
+              <div className="guide-step">
+                <h3>Efter konverteringen – Importér filen i Payroll</h3>
+                <ol>
+                  <li>
+                    Sørg for, at du har installeret Zenegy® Payroll filimporteren, du kan læse mere om filimporteren {' '}
+                    <a href="https://help.zenegy.com/da/articles/760-installer-og-brug-zenegy-filimport" target="_blank" rel="noopener noreferrer">
+                      her
+                    </a>.
+                  </li>
+                  <li>
+                    Upload filen i Zenegys filimporter under "Medarbejdere".
+                  </li>
+                </ol>
+              </div>
+            </div>
+
+            <div className="upload-section">
+              <h2>Upload og konverter filer</h2>
 
               <div className="file-uploaders">
                 {FILE_TYPES.map(fileType => (
@@ -298,7 +351,7 @@ function App() {
 
               <div className="action-section">
                 <div className="file-count">
-                  {selectedCount} file{selectedCount !== 1 ? 's' : ''} selected
+                  {selectedCount} fil{selectedCount !== 1 ? 'er' : ''} valgt
                 </div>
 
                 <button
@@ -306,7 +359,7 @@ function App() {
                   disabled={processing || !hasActiveEmployee}
                   className="process-button"
                 >
-                  {processing ? 'Processing...' : 'Process Documents'}
+                  {processing ? 'Konverterer...' : 'Konvertér dokumenter'}
                 </button>
               </div>
 
@@ -318,7 +371,7 @@ function App() {
 
               {success && (
                 <div className="message success-message">
-                  ✅ Processing complete! Excel file downloaded.
+                  ✅ Konvertering fuldført! Excel-filen er downloadet.
                 </div>
               )}
 
@@ -326,15 +379,15 @@ function App() {
                 <div className="processing-info">
                   <div className="spinner"></div>
                   <p>
-                    {jobStatus === 'UPLOADING' && 'Uploading files to server...'}
-                    {jobStatus === 'STARTING' && 'Starting processing job...'}
-                    {jobStatus === 'PENDING' && 'Job queued, waiting to start...'}
-                    {jobStatus === 'PROCESSING' && 'Processing documents (this may take 15-20 minutes for OCR)...'}
-                    {!jobStatus && 'Processing...'}
+                    {jobStatus === 'UPLOADING' && 'Uploader filer til serveren...'}
+                    {jobStatus === 'STARTING' && 'Starter konverteringsjob...'}
+                    {jobStatus === 'PENDING' && 'Job i kø, venter på at starte...'}
+                    {jobStatus === 'PROCESSING' && 'Behandler dokumenter (dette kan tage 15-20 minutter for OCR)...'}
+                    {!jobStatus && 'Behandler...'}
                   </p>
-                  <p className="processing-note">Please wait - your Excel file will download automatically when ready.</p>
+                  <p className="processing-note">Vent venligst – din Excel-fil downloades automatisk, når den er klar.</p>
                   {(jobStatus === 'PENDING' || jobStatus === 'PROCESSING') && (
-                    <p className="processing-note">Checking status every 10 seconds...</p>
+                    <p className="processing-note">Tjekker status hvert 10. sekund...</p>
                   )}
                 </div>
               )}
