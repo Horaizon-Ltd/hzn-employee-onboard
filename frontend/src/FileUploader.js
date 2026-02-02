@@ -1,6 +1,6 @@
 import React from 'react';
 
-const FileUploader = ({ fileType, label, acceptedFormats, onFileSelect, selectedFile }) => {
+const FileUploader = ({ fileType, label, acceptedFormats, onFileSelect, selectedFile, hint }) => {
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (file) {
@@ -14,6 +14,9 @@ const FileUploader = ({ fileType, label, acceptedFormats, onFileSelect, selected
         <span className="label-text">{label}</span>
         <span className="format-hint">({acceptedFormats})</span>
       </label>
+      {hint && (
+        <p className="file-hint">{hint}</p>
+      )}
       <div className="file-input-wrapper">
         <input
           type="file"

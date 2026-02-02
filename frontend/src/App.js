@@ -21,31 +21,36 @@ const FILE_TYPES = [
     type: 'employee_payslip',
     label: 'Upload rapporten: Lønseddel (Payslip)',
     formats: 'pdf',
-    acceptedFormat: 'pdf'
+    acceptedFormat: 'pdf',
+    hint: 'Findes under fanen LØN → Lønafregning → Lønsedler'
   },
   {
     type: 'employee_active',
     label: 'Upload rapporten: Medarbejderoversigt (List of active employees)',
     formats: '.xlsx, .xls',
-    acceptedFormat: 'xlsx,xls'
+    acceptedFormat: 'xlsx,xls',
+    hint: 'Findes under fanen VIRKSOMHED → Udskrifter → Medarbejderoversigt. Der sorteres på aktive medarbejdere og der vælges "Vis som Excel" og gemmes.'
   },
   {
     type: 'employee_holiday',
     label: 'Upload rapporten: Feriepengeforpligtelse (Holiday pay obligation)',
     formats: '.xlsx, .xls',
-    acceptedFormat: 'xlsx,xls'
+    acceptedFormat: 'xlsx,xls',
+    hint: 'Findes under fanen LØN → Ferie → Feriepengeforpligtigelse. Der vælges "Vis som Excel" og gemmes.'
   },
   {
     type: 'employee_general',
     label: 'Upload rapporten: Medarbejderstamkort (Employee masterdata)',
     formats: 'pdf',
-    acceptedFormat: 'pdf'
+    acceptedFormat: 'pdf',
+    hint: 'Findes under fanen VIRKSOMHED → Udskrifter → Medarbejderstamkort'
   },
   {
     type: 'employee_list',
     label: 'Upload rapporten: Medarbejderliste (Employee List)',
     formats: 'pdf',
-    acceptedFormat: 'pdf'
+    acceptedFormat: 'pdf',
+    hint: 'Findes under fanen VIRKSOMHED → Udskrifter → Medarbejderliste'
   }
 ];
 
@@ -345,6 +350,7 @@ function App() {
                     acceptedFormats={fileType.formats}
                     onFileSelect={handleFileSelect}
                     selectedFile={selectedFiles[fileType.type]}
+                    hint={fileType.hint}
                   />
                 ))}
               </div>
